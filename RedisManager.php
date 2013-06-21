@@ -23,12 +23,6 @@ class RedisManager {
 	protected $_config;
 	
 	/**
-	 * 
-	 * @var boolean
-	 */
-	protected $_transactionalMode = false;
-	
-	/**
 	 * @var array
 	 */
 	protected $_queue = array();
@@ -51,8 +45,7 @@ class RedisManager {
 	}
 	
 	public function __destruct(){
-		if ($this->_transactionalMode)
-			$this->flush();
+		$this->flush();
 	}
 	
 	/**
@@ -74,24 +67,14 @@ class RedisManager {
 	protected function _connect(){
 		$this->_redis = new Redis();
 		if ($this->_config['persistent'])
-			$this->_redis->pconnect($this->_config['host'], $this->_config['port']);
+			$this->_redis->pconnect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null);
 		else
-			$this->_redis->connect($this->_config['host'], $this->_config['port']);
+			$this->_redis->connect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null);
 		
 		$this->_redis->setOption(Redis::OPT_SERIALIZER, Redis::SERIALIZER_NONE);
 		
 		if ($this->_config['database'] > 0)
 			$this->_redis->select($this->_config['database']);
-	}
-	
-	protected function _beginTransaction(){
-		if ($this->_redis === null)
-			$this->_connect();
-		
-		if (!$this->_transactionalMode){
-			$this->_redis->multi(Redis::PIPELINE);
-			$this->_transactionalMode = true;
-		}
 	}
 	
 	public function onGet($result){
@@ -108,7 +91,7 @@ class RedisManager {
 		if ($this->_profiler)
 			$this->_profiler->log($name, $arguments);
 		
-		if ($this->_transactionalMode){
+		if (!empty($this->_queue)){
 			$this->_queue[] = array(
 				'callback'	=>	array($this, 'onGet'),
 				'params'	=>	$arguments,
@@ -125,8 +108,12 @@ class RedisManager {
 		$arguments = func_get_args();
 		$name = array_shift($arguments);
 		
-		$this->_beginTransaction();
-
+		if ($this->_redis === null)
+			$this->_connect();
+		
+		if (empty($this->_queue))
+			$this->_redis->multi(Redis::PIPELINE);
+		
 		$this->_queue[] = array(
 			'callback'	=> is_callable(end($arguments)) ? array_pop($arguments) : null,
 			'params'	=> $arguments,
@@ -139,12 +126,13 @@ class RedisManager {
 	}
 	
 	public function flush(){
+		if (empty($this->_queue))
+			return;
+		
 		if ($this->_redis === null)
 			$this->_connect();
 		
 		$results = $this->_redis->exec();
-		
-		$this->_transactionalMode = false;
 		
 		foreach ($this->_queue as $index => $command)
 			if (isset($command['callback'])){
@@ -154,20 +142,4 @@ class RedisManager {
 			}
 		$this->_queue = array();
 	}
-	
-	/**
-	 * 以下是常用函数，静态化常用函数能够显著减少函数调用次数，提升性能
-	public function hGetAll($key, $callback = null){
-		$this->_beginTransaction();
-
-		$this->_queue[] = array(
-			'callback'	=> $callback,
-			'params'	=> array($key),
-		);
-		$this->_redis->hGetAll($key);
-		
-		if ($this->_profiler)
-			$this->_profiler->log('hGetAll', array($key));
-	}
-	 */
 }

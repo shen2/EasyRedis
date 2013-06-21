@@ -3,7 +3,7 @@ class RedisProfiler{
 	
 	protected $_queries = array();
 	
-	public function log($name, $arguments){
+	public function log($name, $arguments = array()){
 		$this->_queries[] = $name . ' ' . implode(' ', $arguments);
 	}
 	
