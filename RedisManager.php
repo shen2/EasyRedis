@@ -1,127 +1,173 @@
 <?php
 /*
 interface DeferedObject{
-	public static function createDefered($key);
-	public static function fillData($data);
+	public function createDefered($key);
+	public function fillData($data);
 }
 */
 class RedisManager {
-	
-	protected static $_profiler = null;
+	/**
+	 * 
+	 * @var RedisProfiler
+	 */
+	protected $_profiler = null;
 	
 	/**
 	 * @var Redis
 	 */
-	protected static $_redis = null;
+	protected $_redis = null;
 	
 	/**
 	 * @var array
 	 */
-	protected static $_config;
+	protected $_config;
 	
 	/**
 	 * 
 	 * @var boolean
 	 */
-	protected static $_transactionalMode = false;
+	protected $_transactionalMode = false;
 	
 	/**
 	 * @var array
 	 */
-	protected static $_queue = array();
+	protected $_queue = array();
 	
 	/**
 	 * 
 	 * @var mixed
 	 */
-	protected static $_lastResult;
+	protected $_lastResult;
 	
 	/**
 	 * 
 	 * @param array $config
 	 */
-	public static function setConfig($config){
-		self::$_config = $config;
+	public function __construct($config){
+		$this->_config = $config;
+		
+		if ($config['profiler'])
+			$this->_profiler = new RedisProfiler();
+	}
+	
+	public function __destruct(){
+		if ($this->_transactionalMode)
+			$this->flush();
 	}
 	
 	/**
 	 * 
 	 * @param RedisProfiler $profiler
 	 */
-	public static function setProfiler($profiler){
-		self::$_profiler = $profiler;
+	public function setProfiler($profiler){
+		$this->_profiler = $profiler;
 	}
 	
-	public static function getProfiler(){
-		return self::$_profiler;
+	/**
+	 * 
+	 * @return RedisProfiler
+	 */
+	public function getProfiler(){
+		return $this->_profiler;
 	}
 	
-	protected static function _connect(){
-		self::$_redis = new Redis();
-		if (self::$_config['persistent'])
-			self::$_redis->pconnect(self::$_config['host'], self::$_config['port']);
+	protected function _connect(){
+		$this->_redis = new Redis();
+		if ($this->_config['persistent'])
+			$this->_redis->pconnect($this->_config['host'], $this->_config['port']);
 		else
-			self::$_redis->connect(self::$_config['host'], self::$_config['port']);
+			$this->_redis->connect($this->_config['host'], $this->_config['port']);
 		
-		self::$_redis->setOption(Redis::OPT_SERIALIZER, Redis::SERIALIZER_NONE);
+		$this->_redis->setOption(Redis::OPT_SERIALIZER, Redis::SERIALIZER_NONE);
 		
-		self::$_redis->select(self::$_config['database']);
+		if ($this->_config['database'] > 0)
+			$this->_redis->select($this->_config['database']);
 	}
 	
-	protected static function _beginTransaction(){
-		if (self::$_redis === null)
-			self::_connect();
+	protected function _beginTransaction(){
+		if ($this->_redis === null)
+			$this->_connect();
 		
-		if (!self::$_transactionalMode){
-			self::$_redis->multi(Redis::PIPELINE);
-			self::$_transactionalMode = true;
+		if (!$this->_transactionalMode){
+			$this->_redis->multi(Redis::PIPELINE);
+			$this->_transactionalMode = true;
 		}
 	}
 	
-	public static function close(){
-		if (self::$_transactionalMode)
-			self::flush();
+	public function onGet($result){
+		$this->_lastResult = $result;
 	}
 	
-	public static function onGet($result){
-		self::$_lastResult = $result;
-	}
-	
-	public static function __callStatic($name, $arguments){
-		if (self::$_redis === null)
-			self::_connect();
+	public function call(){
+		$arguments = func_get_args();
+		$name = array_shift($arguments);
 		
-		self::$_profiler->log($name, $arguments);
+		if ($this->_redis === null)
+			$this->_connect();
 		
-		if (self::$_transactionalMode){
-			self::$_queue[] = array(
-				'callback'	=>	array(get_called_class(), 'onGet'),
+		if ($this->_profiler)
+			$this->_profiler->log($name, $arguments);
+		
+		if ($this->_transactionalMode){
+			$this->_queue[] = array(
+				'callback'	=>	array($this, 'onGet'),
 				'params'	=>	$arguments,
 			);
-			call_user_func_array(array(self::$_redis, $name), $arguments);
-			self::flush();
-			return self::$_lastResult;
+			call_user_func_array(array($this->_redis, $name), $arguments);
+			$this->flush();
+			return $this->_lastResult;
 		}
 		else
-			return call_user_func_array(array(self::$_redis, $name), $arguments);
+			return call_user_func_array(array($this->_redis, $name), $arguments);
 	}
 	
-	public static function flush(){
-		if (self::$_redis === null)
-			self::_connect();
+	public function defer(){
+		$arguments = func_get_args();
+		$name = array_shift($arguments);
 		
-		$results = self::$_redis->exec();
+		$this->_beginTransaction();
+
+		$this->_queue[] = array(
+			'callback'	=> is_callable(end($arguments)) ? array_pop($arguments) : null,
+			'params'	=> $arguments,
+		);
 		
-		self::$_transactionalMode = false;
+		if ($this->_profiler)
+			$this->_profiler->log($name, $arguments);
 		
-		foreach (self::$_queue as $index => $command)
+		return call_user_func_array(array($this->_redis, $name), $arguments);
+	}
+	
+	public function flush(){
+		if ($this->_redis === null)
+			$this->_connect();
+		
+		$results = $this->_redis->exec();
+		
+		$this->_transactionalMode = false;
+		
+		foreach ($this->_queue as $index => $command)
 			if (isset($command['callback'])){
 				$params = $command['params'];
 				array_unshift($params, $results[$index]);
 				call_user_func_array($command['callback'], $params);
 			}
-		self::$_queue = array();
+		$this->_queue = array();
 	}
-}
+	
+	/**
+	 * 以下是常用函数，静态化常用函数能够显著减少函数调用次数，提升性能
+	public function hGetAll($key, $callback = null){
+		$this->_beginTransaction();
 
-require_once 'init-redis.php';
+		$this->_queue[] = array(
+			'callback'	=> $callback,
+			'params'	=> array($key),
+		);
+		$this->_redis->hGetAll($key);
+		
+		if ($this->_profiler)
+			$this->_profiler->log('hGetAll', array($key));
+	}
+	 */
+}

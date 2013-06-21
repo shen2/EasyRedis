@@ -4,8 +4,6 @@ $config = array(
 	'port'		=> 6379,
 	'persistent'=> false,
 	'database'	=> 0,
+	'profiler'	=> true,
 );
-RedisManager::setConfig($config);
-
-require 'RedisProfiler.php';
-RedisManager::setProfiler(new RedisProfiler());
+$redisManager = new RedisManager($config);
