@@ -67,9 +67,9 @@ class RedisManager {
 	protected function _connect(){
 		$this->_redis = new Redis();
 		if ($this->_config['persistent'])
-			$this->_redis->pconnect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null);
+			$this->_redis->pconnect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null, isset($this->_config['timeout']) ? $this->_config['timeout'] : null);
 		else
-			$this->_redis->connect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null);
+			$this->_redis->connect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null, isset($this->_config['timeout']) ? $this->_config['timeout'] : null);
 		
 		$this->_redis->setOption(Redis::OPT_SERIALIZER, Redis::SERIALIZER_NONE);
 		
@@ -104,10 +104,7 @@ class RedisManager {
 			return call_user_func_array(array($this->_redis, $name), $arguments);
 	}
 	
-	public function defer(){
-		$arguments = func_get_args();
-		$name = array_shift($arguments);
-		
+	public function defer($name, $params = array(), $callback = null){
 		if ($this->_redis === null)
 			$this->_connect();
 		
@@ -115,14 +112,14 @@ class RedisManager {
 			$this->_redis->multi(Redis::PIPELINE);
 		
 		$this->_queue[] = array(
-			'callback'	=> is_callable(end($arguments)) ? array_pop($arguments) : null,
-			'params'	=> $arguments,
+			'callback'	=> $callback,
+			'params'	=> $params,
 		);
 		
 		if ($this->_profiler)
-			$this->_profiler->log($name, $arguments);
+			$this->_profiler->log($name, $params);
 		
-		return call_user_func_array(array($this->_redis, $name), $arguments);
+		return call_user_func_array(array($this->_redis, $name), $params);
 	}
 	
 	public function flush(){
