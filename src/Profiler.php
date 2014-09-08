@@ -1,5 +1,7 @@
 <?php
-class RedisProfiler{
+namespace EasyRedis;
+
+class Profiler{
 	
 	protected $_queries = array();
 	

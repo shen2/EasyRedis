@@ -1,19 +1,20 @@
 <?php
+namespace EasyRedis;
 /*
 interface DeferedObject{
 	public function createDefered($key);
 	public function fillData($data);
 }
 */
-class RedisManager {
+class Manager {
 	/**
 	 * 
-	 * @var RedisProfiler
+	 * @var Profiler
 	 */
 	protected $_profiler = null;
 	
 	/**
-	 * @var Redis
+	 * @var \Redis
 	 */
 	protected $_redis = null;
 	
@@ -41,7 +42,7 @@ class RedisManager {
 		$this->_config = $config;
 		
 		if ($config['profiler'])
-			$this->_profiler = new RedisProfiler();
+			$this->_profiler = new Profiler();
 	}
 	
 	public function __destruct(){
@@ -50,7 +51,7 @@ class RedisManager {
 	
 	/**
 	 * 
-	 * @param RedisProfiler $profiler
+	 * @param Profiler $profiler
 	 */
 	public function setProfiler($profiler){
 		$this->_profiler = $profiler;
@@ -58,20 +59,20 @@ class RedisManager {
 	
 	/**
 	 * 
-	 * @return RedisProfiler
+	 * @return Profiler
 	 */
 	public function getProfiler(){
 		return $this->_profiler;
 	}
 	
 	protected function _connect(){
-		$this->_redis = new Redis();
+		$this->_redis = new \Redis();
 		if ($this->_config['persistent'])
 			$this->_redis->pconnect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null, isset($this->_config['timeout']) ? $this->_config['timeout'] : null);
 		else
 			$this->_redis->connect($this->_config['host'], isset($this->_config['port']) ? $this->_config['port'] : null, isset($this->_config['timeout']) ? $this->_config['timeout'] : null);
 		
-		$this->_redis->setOption(Redis::OPT_SERIALIZER, Redis::SERIALIZER_NONE);
+		$this->_redis->setOption(\Redis::OPT_SERIALIZER, \Redis::SERIALIZER_NONE);
 		
 		if ($this->_config['database'] > 0)
 			$this->_redis->select($this->_config['database']);
@@ -109,7 +110,7 @@ class RedisManager {
 			$this->_connect();
 		
 		if (empty($this->_queue))
-			$this->_redis->multi(Redis::PIPELINE);
+			$this->_redis->multi(\Redis::PIPELINE);
 		
 		$this->_queue[] = array(
 			'callback'	=> $callback,
