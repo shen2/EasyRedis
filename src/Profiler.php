@@ -6,7 +6,7 @@ class Profiler{
 	protected $_queries = array();
 	
 	public function log($name, $arguments = array()){
-		$this->_queries[] = $name . ' ' . implode(' ', $arguments);
+		$this->_queries[] = $name . ' ' . json_encode($arguments);
 	}
 	
 	public function getTotalNumQueries(){
