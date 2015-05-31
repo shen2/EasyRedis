@@ -101,8 +101,10 @@ class Manager {
 			$this->flush();
 			return $this->_lastResult;
 		}
-		else
+		else{
+			$this->_profiler->execute();
 			return call_user_func_array(array($this->_redis, $name), $arguments);
+		}
 	}
 	
 	public function defer($name, $params = array(), $callback = null){
@@ -131,6 +133,9 @@ class Manager {
 			$this->_connect();
 		
 		$results = $this->_redis->exec();
+		
+		if ($this->_profiler)
+			$this->_profiler->execute();
 		
 		foreach ($this->_queue as $index => $command)
 			if (isset($command['callback'])){
