@@ -102,7 +102,8 @@ class Manager {
 			return $this->_lastResult;
 		}
 		else{
-			$this->_profiler->execute();
+			if ($this->_profiler)
+				$this->_profiler->execute();
 			return call_user_func_array(array($this->_redis, $name), $arguments);
 		}
 	}
