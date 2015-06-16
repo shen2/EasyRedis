@@ -30,12 +30,6 @@ class Manager {
 
     /**
      *
-     * @var mixed
-     */
-    protected $_lastResult;
-
-    /**
-     *
      * @param array $config
      */
     public function __construct($config){
@@ -90,20 +84,19 @@ class Manager {
             $this->_profiler->log($name, $arguments);
 
         if (!empty($this->_queue)){
-            $closure = function($result){
-                $this->_lastResult = $result;
-            };
-            $closure->bindTo($this);
             $this->_queue[] = array(
-                'callback'	=>	$closure,
+                'callback'	=>	function($result) use(&$lastResult) {
+                    $lastResult = $result;
+                },
                 'params'	=>	$arguments,
             );
             call_user_func_array(array($this->_redis, $name), $arguments);
             $this->flush();
-            return $this->_lastResult;
+            return $lastResult;
         }
         else{
-            if($this->_profiler) $this->_profiler->start();
+            if($this->_profiler)
+                $this->_profiler->start();
 
             $result = call_user_func_array(array($this->_redis, $name), $arguments);
 
@@ -139,7 +132,8 @@ class Manager {
         if ($this->_redis === null)
             $this->_connect();
 
-        if($this->_profiler) $this->_profiler->start();
+        if($this->_profiler)
+            $this->_profiler->start();
 
         $results = $this->_redis->exec();
 

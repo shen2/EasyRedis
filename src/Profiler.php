@@ -5,24 +5,24 @@ class Profiler{
 
     protected $_queries = array();
 
-    protected $_commands = array();
+    protected $_queriesTime = array();
 
-    protected $_commandsTime = array();
+    protected $_commands = array();
 
     protected $_totalCommands = 0;
 
-    protected $_startedMicrotime = 0;
+    protected $_startedAt = 0;
 
     public function log($name, $arguments = array()){
         $this->_commands[] = $name . ' ' . json_encode($arguments);
     }
 
     public function start(){
-        $this->_startedMicrotime = microtime(true);
+        $this->_startedAt = microtime(true);
     }
 
     public function execute(){
-        $this->_commandsTime[count($this->_queries)] = microtime(true) - $this->_startedMicrotime;
+        $this->_queriesTime[] = microtime(true) - $this->_startedAt;
         $this->_queries[] = $this->_commands;
         $this->_totalCommands += count($this->_commands);
         $this->_commands = array();
@@ -40,14 +40,10 @@ class Profiler{
         return $this->_queries;
     }
 
-    public function getCommandsTime(){
-        return $this->_commandsTime;
+    public function getQueriesTime(){
+        return $this->_queriesTime;
     }
 
     public function __destruct(){
-        /*
-        if (count($this->_queries) > 500){
-                // do something.
-        }*/
     }
 }
