@@ -84,13 +84,18 @@ class Manager {
             $this->_profiler->log($name, $arguments);
 
         if (!empty($this->_queue)){
+            // Send the method call first, enqueue later.
+            $result = call_user_func_array(array($this->_redis, $name), $arguments);
+            if ($result === false)
+                $this->_throwException($name, $arguments);
+            
             $this->_queue[] = array(
                 'callback'	=>	function($result) use(&$lastResult) {
                     $lastResult = $result;
                 },
                 'params'	=>	$arguments,
             );
-            call_user_func_array(array($this->_redis, $name), $arguments);
+            
             $this->flush();
             return $lastResult;
         }
@@ -114,15 +119,20 @@ class Manager {
         if (empty($this->_queue))
             $this->_redis->multi(\Redis::PIPELINE);
 
+        if ($this->_profiler)
+            $this->_profiler->log($name, $params);
+
+        // Send the method call first, enqueue later.
+        $result = call_user_func_array(array($this->_redis, $name), $params);
+        if ($result === false)
+            $this->_throwException($name, $params);
+        
         $this->_queue[] = array(
             'callback'	=> $callback,
             'params'	=> $params,
         );
-
-        if ($this->_profiler)
-            $this->_profiler->log($name, $params);
-
-        return call_user_func_array(array($this->_redis, $name), $params);
+        
+        return $this;
     }
 
     public function flush(){
@@ -147,5 +157,13 @@ class Manager {
                 call_user_func_array($command['callback'], $params);
             }
         $this->_queue = array();
+    }
+    
+    protected function _throwException($name, $params){
+        $args = [];
+        foreach($params as $arg){
+            $args[] = var_export($arg, true);
+        }
+        throw new Exception('Redis::' . $name . '(' . implode(', ', $args) . ') returns FALSE');
     }
 }
