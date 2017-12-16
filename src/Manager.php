@@ -26,7 +26,7 @@ class Manager {
     /**
      * @var array
      */
-    protected $_queue = array();
+    protected $_callbacks = [];
 
     /**
      *
@@ -83,18 +83,15 @@ class Manager {
         if ($this->_profiler)
             $this->_profiler->log($name, $arguments);
 
-        if (!empty($this->_queue)){
+        if (!empty($this->_callbacks)){
             // Send the method call first, enqueue later.
             $result = call_user_func_array(array($this->_redis, $name), $arguments);
             if ($result === false)
                 $this->_throwException($name, $arguments);
             
-            $this->_queue[] = array(
-                'callback'	=>	function($result) use(&$lastResult) {
+            $this->_callbacks[] = function($result) use(&$lastResult) {
                     $lastResult = $result;
-                },
-                'params'	=>	$arguments,
-            );
+                };
             
             $this->flush();
             return $lastResult;
@@ -116,7 +113,7 @@ class Manager {
         if ($this->_redis === null)
             $this->_connect();
 
-        if (empty($this->_queue))
+        if (empty($this->_callbacks))
             $this->_redis->multi(\Redis::PIPELINE);
 
         if ($this->_profiler)
@@ -127,16 +124,13 @@ class Manager {
         if ($result === false)
             $this->_throwException($name, $params);
         
-        $this->_queue[] = array(
-            'callback'	=> $callback,
-            'params'	=> $params,
-        );
+        $this->_callbacks[] = $callback;
         
         return $this;
     }
 
     public function flush(){
-        if (empty($this->_queue))
+        if (empty($this->_callbacks))
             return;
 
         if ($this->_redis === null)
@@ -150,13 +144,11 @@ class Manager {
         if ($this->_profiler)
             $this->_profiler->execute();
 
-        foreach ($this->_queue as $index => $command)
-            if (isset($command['callback'])){
-                $params = $command['params'];
-                array_unshift($params, $results[$index]);
-                call_user_func_array($command['callback'], $params);
-            }
-        $this->_queue = array();
+        foreach ($this->_callbacks as $index => $callback){
+            if (is_callable($callback))
+                $callback($results[$index]);
+        }
+        $this->_callbacks = array();
     }
     
     protected function _throwException($name, $params){
