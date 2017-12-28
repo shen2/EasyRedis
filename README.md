@@ -40,13 +40,13 @@ $config = array(
 $redisManager = new EasyRedis\Manager($config);
 
 // send request synchronously.
-$redisManager->call('set', 'a', 'abc');
-echo $redisManager->call('get', 'a') . "\n";
+$redisManager->send('set', ['a', 'abc']);
+echo $redisManager->send('get', ['a']) . "\n";
 
 // send request asynchronously
-$redisManager->defer('set', ['a', 'abc']);
+$redisManager->sendAsync('set', ['a', 'abc']);
 
-$redisManager->defer('set', ['b', '123'], function(){
+$redisManager->sendAsync('set', ['b', '123'])->then(function(){
     echo "successed.\n";
 });
 ```
