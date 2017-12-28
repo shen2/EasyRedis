@@ -1,11 +1,6 @@
 <?php
 namespace EasyRedis;
-/*
-interface DeferedObject{
-	public function createDefered($key);
-	public function fillData($data);
-}
-*/
+
 class Manager {
     /**
      *
@@ -26,7 +21,7 @@ class Manager {
     /**
      * @var array
      */
-    protected $_callbacks = [];
+    protected $_promises = [];
 
     /**
      *
@@ -73,25 +68,25 @@ class Manager {
 
     }
 
-    public function call(){
-        $arguments = func_get_args();
-        $name = array_shift($arguments);
+    public function send($name, $params = []){
 
         if ($this->_redis === null)
             $this->_connect();
 
         if ($this->_profiler)
-            $this->_profiler->log($name, $arguments);
+            $this->_profiler->log($name, $params);
 
-        if (!empty($this->_callbacks)){
+        if (!empty($this->_promises)){
             // Send the method call first, enqueue later.
-            $result = call_user_func_array(array($this->_redis, $name), $arguments);
+            $result = call_user_func_array(array($this->_redis, $name), $params);
             if ($result === false)
-                $this->_throwException($name, $arguments);
+                $this->_throwException($name, $params);
             
-            $this->_callbacks[] = function($result) use(&$lastResult) {
-                    $lastResult = $result;
-                };
+            $promise = new Promise();
+            $promise->done(function($result) use(&$lastResult) {
+                $lastResult = $result;
+            });
+            $this->_promises[] = $promise;
             
             $this->flush();
             return $lastResult;
@@ -100,7 +95,7 @@ class Manager {
             if($this->_profiler)
                 $this->_profiler->start();
 
-            $result = call_user_func_array(array($this->_redis, $name), $arguments);
+            $result = call_user_func_array(array($this->_redis, $name), $params);
 
             if ($this->_profiler)
                 $this->_profiler->execute();
@@ -109,11 +104,11 @@ class Manager {
         }
     }
 
-    public function defer($name, $params = array(), $callback = null){
+    public function sendAsync($name, $params = []){
         if ($this->_redis === null)
             $this->_connect();
 
-        if (empty($this->_callbacks))
+        if (empty($this->_promises))
             $this->_redis->multi(\Redis::PIPELINE);
 
         if ($this->_profiler)
@@ -124,13 +119,13 @@ class Manager {
         if ($result === false)
             $this->_throwException($name, $params);
         
-        $this->_callbacks[] = $callback;
+        $this->_promises[] = $promise = new Promise();
         
-        return $this;
+        return $promise;
     }
 
     public function flush(){
-        if (empty($this->_callbacks))
+        if (empty($this->_promises))
             return;
 
         if ($this->_redis === null)
@@ -144,11 +139,10 @@ class Manager {
         if ($this->_profiler)
             $this->_profiler->execute();
 
-        foreach ($this->_callbacks as $index => $callback){
-            if (is_callable($callback))
-                $callback($results[$index]);
+        foreach ($this->_promises as $index => $promise){
+            $promise->fulfill($results[$index]);
         }
-        $this->_callbacks = array();
+        $this->_promises = [];
     }
     
     protected function _throwException($name, $params){
