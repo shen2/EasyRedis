@@ -9,12 +9,12 @@ class Promise{
 	}
 
 	public function then(callable $onFulfilled){
-		$this->callbacks[] = $callback;
+		$this->callbacks[] = $onFulfilled;
 		return $this;
 	}
 
 	public function done(callable $onFulfilled){
-		$this->callbacks[] = $callback;
+		$this->callbacks[] = $onFulfilled;
 		return null;
 	}
 
